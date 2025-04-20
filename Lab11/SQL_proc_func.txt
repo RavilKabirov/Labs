@@ -1,0 +1,83 @@
+CREATE OR REPLACE FUNCTION search_by_pattern(pattern TEXT)
+RETURNS TABLE(id INT, name VARCHAR(100), phone VARCHAR(100)) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM PhoneBook
+    WHERE PhoneBook.name ILIKE '%' || pattern || '%' OR PhoneBook.phone ILIKE '%' || pattern || '%';
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM search_by_pattern('al')
+
+2:
+
+CREATE OR REPLACE PROCEDURE insert_or_update_user(p_name TEXT, p_phone TEXT)
+AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM PhoneBook WHERE name = p_name) THEN
+        UPDATE PhoneBook SET phone = p_phone WHERE name = p_name;
+    ELSE
+        INSERT INTO PhoneBook(name, phone) VALUES(p_name, p_phone);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CALL insert_or_update_user('Roar', '88005553535')
+CALL insert_or_update_user('Roar', '66666666666')
+
+3:
+
+CREATE OR REPLACE PROCEDURE insert_many_users(users TEXT[][])
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    i INT := 1;
+    incorrect_data TEXT := '';
+BEGIN
+    WHILE i <= array_length(users, 1) LOOP
+        IF users[i][2] ~ '^\+?[0-9]{10,15}$' THEN
+            
+            CALL insert_or_update_user(users[i][1], users[i][2]);
+        ELSE
+            incorrect_data := incorrect_data || '(' || users[i][1] || ', ' || users[i][2] || '); ';
+        END IF;
+        i := i + 1;
+    END LOOP;
+
+    IF incorrect_data <> '' THEN
+        RAISE NOTICE 'Incorrect entries: %', incorrect_data;
+    END IF;
+END;
+$$;
+
+
+CALL insert_many_users(ARRAY[
+    ['Alice', '+77012345678'],
+    ['Bob', '123456'],  - не пройдет
+    ['Charlie', '+77098765432']
+]);
+
+4:
+
+CREATE OR REPLACE FUNCTION get_paginated_users(p_limit INT, p_offset INT)
+RETURNS TABLE(id INT, name VARCHAR(100), phone VARCHAR(100)) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM PhoneBook
+    ORDER BY id
+    LIMIT p_limit OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM get_paginated_users(3, 3)
+
+5:
+
+CREATE OR REPLACE PROCEDURE delete_user(p_value TEXT)
+AS $$
+BEGIN
+    DELETE FROM PhoneBook WHERE name = p_value OR phone = p_value;
+END;
+$$ LANGUAGE plpgsql;
+
+CALL delete_user('Alice')
